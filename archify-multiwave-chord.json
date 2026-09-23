@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Make Noise MultiWAVE 4-Voice Chord: A-185-2 Precision Sum + A-166 OR Gate",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "full-chord-flow",
+        "label": "Ruta Completa Modulation Dissemination",
+        "focus": ["utune-master", "a185-adder", "a166-logic", "multiwave-core", "sound-output"],
+        "note": "El µTune genera 4 voces microtonales: el A-185-2 suma los voltajes 1V/Oct y el A-166 combina los Gates mediante OR para disparar Activate."
+      },
+      {
+        "id": "pitch-precision-path",
+        "label": "Ruta de Tono (A-185-2)",
+        "focus": ["utune-master", "a185-adder", "multiwave-core"],
+        "note": "Suma analógica de ultra-precisión de los 4 CVs microtonales sin pérdida de seguimiento (tracking) hacia el jack V/OCT."
+      },
+      {
+        "id": "gate-logic-path",
+        "label": "Ruta de Articulación (A-166 OR)",
+        "focus": ["utune-master", "a166-logic", "multiwave-core"],
+        "note": "Compuerta OR (≥1) que detecta actividad en cualquiera de las 4 voces y dispara la entrada Activate del MultiWAVE."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "utune-master",
+      "type": "cloud",
+      "label": "Tubbutec µTune",
+      "sublabel": "4-Channel Microtonal CV & Gates",
+      "pos": [40, 200],
+      "size": [160, 80],
+      "tag": "CV 1-4 + Gate 1-4"
+    },
+    {
+      "id": "a185-adder",
+      "type": "backend",
+      "label": "Doepfer A-185-2",
+      "sublabel": "Precision Adder Bus",
+      "pos": [320, 100],
+      "size": [150, 70],
+      "tag": "Pitch CV (0.1% Tol)"
+    },
+    {
+      "id": "a166-logic",
+      "type": "backend",
+      "label": "Doepfer A-166 Logic",
+      "sublabel": "OR Gate Combiner (≥1)",
+      "pos": [320, 310],
+      "size": [150, 70],
+      "tag": "Gate Combiner"
+    },
+    {
+      "id": "multiwave-core",
+      "type": "frontend",
+      "label": "Make Noise MultiWAVE",
+      "sublabel": "Modulation Dissemination",
+      "pos": [600, 200],
+      "size": [160, 80],
+      "tag": "4-Voice Chord Engine"
+    },
+    {
+      "id": "sound-output",
+      "type": "database",
+      "label": "Audio Output",
+      "sublabel": "Mixer / Sound System",
+      "pos": [860, 205],
+      "size": [130, 70],
+      "tag": "Stereo Out"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Sección Superior: RackBrute 3U (Generación & Enrutamiento Lógico)",
+      "wraps": ["utune-master", "a185-adder", "a166-logic"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Fila Inferior: Make Noise System (Síntesis & Acordes)",
+      "wraps": ["multiwave-core", "sound-output"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "utune-to-adder",
+      "from": "utune-master",
+      "to": "a185-adder",
+      "label": "4x Pitch CV",
+      "variant": "emphasis"
+    },
+    {
+      "id": "utune-to-logic",
+      "from": "utune-master",
+      "to": "a166-logic",
+      "label": "4x Gates",
+      "variant": "security"
+    },
+    {
+      "id": "adder-to-multiwave",
+      "from": "a185-adder",
+      "to": "multiwave-core",
+      "label": "V/OCT Único",
+      "variant": "emphasis"
+    },
+    {
+      "id": "logic-to-multiwave",
+      "from": "a166-logic",
+      "to": "multiwave-core",
+      "label": "ACTIVATE",
+      "variant": "security",
+      "labelAt": [535, 345]
+    },
+    {
+      "id": "multiwave-to-out",
+      "from": "multiwave-core",
+      "to": "sound-output",
+      "label": "Acorde 4 Voces",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Tono: Doepfer A-185-2 Precision Adder",
+      "items": [
+        "Suma hasta 4 voltajes de afinación microtonal del µTune con amplificadores operacionales de ultra-baja deriva.",
+        "Garantiza que la afinación (19-EDO, 31-EDO o Just Intonation) llegue intacta al jack V/OCT del MultiWAVE sin desviaciones en cents."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Articulación: Doepfer A-166 (Compuerta OR)",
+      "items": [
+        "Unir cables de gate con un mult pasivo provocaría cortocircuitos entre salidas.",
+        "La compuerta OR (≥1) del A-166 combina limpiamente los 4 gates: si cualquiera de las 4 voces dispara, el MultiWAVE recibe el pulso en Activate."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Modulation Dissemination en MultiWAVE",
+      "items": [
+        "MultiWAVE descompone la suma analógica recibida en el jack V/OCT y la disemina entre sus 4 osciladores internos.",
+        "Resultado: Un acorde microtonal denso y articulado disparado como una única entidad armónica coherente."
+      ]
+    }
+  ]
+}

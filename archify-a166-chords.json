@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "A-166 Logic Architecture: Microtonal Chord Voicing (Hardware & VCV Rack)",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "full-patch-flow",
+        "label": "Flujo Completo del Patch",
+        "focus": ["clock-source", "maths-fn", "a166-core", "a141-quad-adsr", "utune-cv", "vco-bank", "vca-mixer", "vcv-bridge"],
+        "note": "Ruta integral desde los moduladores de gate y A-166 hasta los osciladores microtonales y la réplica en VCV Rack."
+      },
+      {
+        "id": "logic-harmonic-engine",
+        "label": "Motor Lógico Armónico",
+        "focus": ["a166-core", "a141-quad-adsr", "utune-cv", "vco-bank"],
+        "note": "El A-166 actúa como director armónico abriendo intervalos microtonales específicos según la tabla de verdad."
+      },
+      {
+        "id": "vcv-rack-mirror",
+        "label": "Entorno VCV Rack",
+        "focus": ["a166-core", "vcv-bridge", "vca-mixer"],
+        "note": "Mapeo directo hacia módulos virtuales equivalentes en VCV Rack (BogAudio Logic, HetrickCV, VCV Fundamental)."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "clock-source",
+      "type": "external",
+      "label": "Master Clock",
+      "sublabel": "Divisor / Beat",
+      "pos": [40, 150],
+      "size": [130, 60],
+      "tag": "0V / +5V"
+    },
+    {
+      "id": "maths-fn",
+      "type": "external",
+      "label": "Make Noise Maths",
+      "sublabel": "Gate / LFO Rise-Fall",
+      "pos": [40, 310],
+      "size": [130, 60],
+      "tag": "Gate B"
+    },
+    {
+      "id": "a166-core",
+      "type": "backend",
+      "label": "Doepfer A-166",
+      "sublabel": "Dual Logic Module",
+      "pos": [260, 230],
+      "size": [150, 70],
+      "tag": "CMOS Logic"
+    },
+    {
+      "id": "utune-cv",
+      "type": "cloud",
+      "label": "Tubbutec µTune",
+      "sublabel": "Microtonal Quantizer",
+      "pos": [510, 80],
+      "size": [150, 65],
+      "tag": "19-EDO / Just"
+    },
+    {
+      "id": "a141-quad-adsr",
+      "type": "backend",
+      "label": "Doepfer A-141-4",
+      "sublabel": "Quad Poly VCADSR",
+      "pos": [510, 230],
+      "size": [150, 70],
+      "tag": "4x Envelopes"
+    },
+    {
+      "id": "vco-bank",
+      "type": "frontend",
+      "label": "VCO Voices Bank",
+      "sublabel": "4x Analog Oscillators",
+      "pos": [760, 230],
+      "size": [150, 70],
+      "tag": "Audio Freqs"
+    },
+    {
+      "id": "vca-mixer",
+      "type": "database",
+      "label": "Quad VCA / Mixer",
+      "sublabel": "Summing Master Bus",
+      "pos": [1000, 230],
+      "size": [140, 70],
+      "tag": "Stereo Output"
+    },
+    {
+      "id": "vcv-bridge",
+      "type": "external",
+      "label": "VCV Rack Bridge",
+      "sublabel": "Simulador Virtual",
+      "pos": [760, 390],
+      "size": [150, 65],
+      "tag": "Software Twin"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Eurorack Modulation & Logic Control (RackBrute 3U)",
+      "wraps": ["clock-source", "maths-fn", "a166-core"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Microtonal Polyphonic Voice Core",
+      "wraps": ["utune-cv", "a141-quad-adsr", "vco-bank", "vca-mixer", "vcv-bridge"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "clk-to-a166",
+      "from": "clock-source",
+      "to": "a166-core",
+      "label": "IN 1 (Clock)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "maths-to-a166",
+      "from": "maths-fn",
+      "to": "a166-core",
+      "label": "IN 2 (Gate)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "logic-to-poly-adsr",
+      "from": "a166-core",
+      "to": "a141-quad-adsr",
+      "label": "Gates",
+      "variant": "security"
+    },
+    {
+      "id": "adsr-to-vco-gate",
+      "from": "a141-quad-adsr",
+      "to": "vco-bank",
+      "label": "VCAs",
+      "variant": "default"
+    },
+    {
+      "id": "utune-to-vco-cv",
+      "from": "utune-cv",
+      "to": "vco-bank",
+      "label": "1V/Oct CV",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "vco-to-mixer",
+      "from": "vco-bank",
+      "to": "vca-mixer",
+      "label": "Audio"
+    },
+    {
+      "id": "logic-to-vcv",
+      "from": "a166-core",
+      "to": "vcv-bridge",
+      "label": "Mapeo VCV",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Lógica Booleana en Acordes Microtonales",
+      "items": [
+        "OR (≥1): Mantiene viva la tónica y la 5ª justa cada vez que hay actividad.",
+        "AND (&): Dispara la 3ª neutra microtonal (~353 cents) únicamente en acentos comunes.",
+        "XOR (=1): Introduce la 7ª armónica (~969 cents) en contratiempos no coincidentes."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "A-166 + µTune + A-141-4",
+      "items": [
+        "El µTune asigna intervalos microtonales en 19-EDO o Just Intonation a 4 osciladores.",
+        "El A-166 calcula la verdad binaria de dos fuentes de modulación.",
+        "El A-141-4 Quad VCADSR traduce las decisiones lógicas en envolventes musicales dinámicas."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Gemelo Virtual en VCV Rack",
+      "items": [
+        "Permite testear el patch en la PC antes de conectar cables físicos en tu RackBrute.",
+        "Equivalentes directos: BogAudio Logic / HetrickCV Logic para el A-166, y VCV Fundamental Poly VCA."
+      ]
+    }
+  ]
+}
