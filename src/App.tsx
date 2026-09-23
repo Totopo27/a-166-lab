@@ -1,416 +1,339 @@
-import { useState, useEffect } from 'react';
-import type { SignalSourceConfig, SectionInputs, SectionOutputs, LogicGateType, PresetScenario } from './core/types';
-import { evaluateSection, generateEuclidean } from './core/logicEngine';
-import { PRESET_SCENARIOS } from './core/presets';
-import { soundEngine } from './audio/soundEngine';
-import { TruthTable } from './components/TruthTable';
-import { ModuleFaceplate } from './components/ModuleFaceplate';
-import { OscilloscopeView } from './components/OscilloscopeView';
+import { useState } from 'react';
 import { 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Volume2, 
-  VolumeX, 
+  Layers, 
   Sliders, 
-  BookOpen, 
   Activity, 
-  Zap 
+  CheckCircle2, 
+  XCircle, 
+  ExternalLink 
 } from 'lucide-react';
 
+// Tipos de lógica
+type LogicGate = 'AND' | 'OR' | 'XOR' | 'NAND' | 'NOR' | 'XNOR';
+
+interface VoiceConfig {
+  name: string;
+  interval: string;
+  ratio: string;
+  cents: number;
+  freq: number;
+  description: string;
+}
+
+const VOICES_MICROTONAL: VoiceConfig[] = [
+  { name: 'Voz 1', interval: 'Tónica Fundamental', ratio: '1/1', cents: 0, freq: 110.0, description: 'Ancla armónica base' },
+  { name: 'Voz 2', interval: '3ª Neutra Microtonal', ratio: '11/9 (24-EDO)', cents: 353, freq: 134.7, description: 'Intermedio ambiguo entre mayor y menor' },
+  { name: 'Voz 3', interval: '5ª Justa Pitagórica', ratio: '3/2', cents: 702, freq: 165.0, description: 'Estabilidad y consonancia pura' },
+  { name: 'Voz 4', interval: '7ª Subarmónica / Armónica', ratio: '7/4', cents: 969, freq: 192.5, description: 'Tensión modal microtonal' },
+];
+
 export function App() {
-  // Transport State
-  const [bpm, setBpm] = useState<number>(120);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [stepCounter, setStepCounter] = useState<number>(0);
+  // Estado de las 4 entradas de Gate del µTune (0V = false, +5V = true)
+  const [gates, setGates] = useState<[boolean, boolean, boolean, boolean]>([true, false, true, false]);
 
-  // Active Preset Scenario
-  const [activeScenario, setActiveScenario] = useState<PresetScenario>(PRESET_SCENARIOS[0]);
-
-  // Audio Monitoring Output (Which logic gate to hear as rhythm)
-  const [audioMonitorGate, setAudioMonitorGate] = useState<LogicGateType | 'ALL' | 'INPUTS'>('AND');
-
-  // Input 1 & Input 2 Signal Generator Config
-  const [src1, setSrc1] = useState<SignalSourceConfig>(PRESET_SCENARIOS[0].source1);
-  const [src2, setSrc2] = useState<SignalSourceConfig>(PRESET_SCENARIOS[0].source2);
-
-  // Manual Gate State
-  const [manualGateState, setManualGateState] = useState<boolean>(false);
-
-  // Current Live Evaluated State
-  const [currentInputs, setCurrentInputs] = useState<SectionInputs>({ in1: false, in2: false });
-  const [currentOutputs, setCurrentOutputs] = useState<SectionOutputs>(evaluateSection({ in1: false, in2: false }));
-
-  // Waveform History for Oscilloscope
-  const [history, setHistory] = useState<{ in1: boolean; in2: boolean; and: boolean; or: boolean; xor: boolean }[]>([]);
-
-  // Update scenario
-  const handleSelectScenario = (scenario: PresetScenario) => {
-    setActiveScenario(scenario);
-    setSrc1({ ...scenario.source1 });
-    setSrc2({ ...scenario.source2 });
-    setAudioMonitorGate(scenario.highlightGate);
+  // Evaluar funciones lógicas
+  const evaluateGate = (gateType: LogicGate, a: boolean, b: boolean): boolean => {
+    switch (gateType) {
+      case 'AND': return a && b;
+      case 'OR': return a || b;
+      case 'XOR': return a !== b;
+      case 'NAND': return !(a && b);
+      case 'NOR': return !(a || b);
+      case 'XNOR': return a === b;
+    }
   };
 
-  // Clock tick interval
-  useEffect(() => {
-    if (!isPlaying) return;
+  // Resultados calculados del Doepfer A-166 Sección 1 (G1 y G2)
+  const sec1_and = evaluateGate('AND', gates[0], gates[1]);
+  const sec1_or = evaluateGate('OR', gates[0], gates[1]);
+  const sec1_xor = evaluateGate('XOR', gates[0], gates[1]);
 
-    // 16th notes tick rate: 60000 / (bpm * 4) ms
-    const intervalTime = (60000 / (bpm * 4));
+  // Resultados calculados del Doepfer A-166 Sección 2 (G3 y G4)
+  const sec2_or = evaluateGate('OR', gates[2], gates[3]);
 
-    const timer = setInterval(() => {
-      setStepCounter((prev) => prev + 1);
-    }, intervalTime);
+  // Resultado de Combinación Cuádruple en Cascada (OR Global hacia MultiWAVE Activate)
+  const multiwaveActivate = sec1_or || sec2_or;
 
-    return () => clearInterval(timer);
-  }, [isPlaying, bpm]);
+  // Voltaje sumado en el Doepfer A-185-2 Precision Adder (1V/Oct)
+  const activeVoicesCount = gates.filter(Boolean).length;
+  const summedPitchCV = gates.reduce((acc, active, idx) => {
+    return active ? acc + (VOICES_MICROTONAL[idx].cents / 1200) : acc;
+  }, 0);
 
-  // Evaluate logic outputs at each step
-  useEffect(() => {
-    // Determine IN 1 state
-    let in1 = false;
-    if (src1.type === 'clock') {
-      const div = src1.clockDivision || 1;
-      in1 = Math.floor(stepCounter / div) % 2 === 0;
-    } else if (src1.type === 'step-sequencer' && src1.steps) {
-      in1 = Boolean(src1.steps[stepCounter % src1.steps.length]);
-    } else if (src1.type === 'euclidean') {
-      const pattern = generateEuclidean(src1.euclideanHits || 3, src1.euclideanSteps || 8);
-      in1 = Boolean(pattern[stepCounter % pattern.length]);
-    }
-
-    // Determine IN 2 state
-    let in2 = false;
-    if (src2.type === 'clock') {
-      const div = src2.clockDivision || 1;
-      in2 = Math.floor(stepCounter / div) % 2 === 0;
-    } else if (src2.type === 'step-sequencer' && src2.steps) {
-      in2 = Boolean(src2.steps[stepCounter % src2.steps.length]);
-    } else if (src2.type === 'euclidean') {
-      const pattern = generateEuclidean(src2.euclideanHits || 4, src2.euclideanSteps || 12);
-      in2 = Boolean(pattern[stepCounter % pattern.length]);
-    } else if (src2.type === 'manual-gate') {
-      in2 = manualGateState;
-    }
-
-    const inputs: SectionInputs = { in1, in2 };
-    const outputs = evaluateSection(inputs);
-
-    setCurrentInputs(inputs);
-    setCurrentOutputs(outputs);
-
-    // Audio triggers on rising edges
-    if (isPlaying && !isMuted) {
-      if (audioMonitorGate === 'AND' && outputs.and) soundEngine.trigger('and');
-      else if (audioMonitorGate === 'OR' && outputs.or) soundEngine.trigger('or');
-      else if (audioMonitorGate === 'XOR' && outputs.xor) soundEngine.trigger('xor');
-      else if (audioMonitorGate === 'INPUTS') {
-        if (in1) soundEngine.trigger('in1');
-        if (in2) soundEngine.trigger('in2');
-      } else if (audioMonitorGate === 'ALL') {
-        if (outputs.and) soundEngine.trigger('and');
-        if (outputs.or) soundEngine.trigger('or');
-        if (outputs.xor) soundEngine.trigger('xor');
-      }
-    }
-
-    // Append to history
-    setHistory((prev) => {
-      const next = [...prev, {
-        in1,
-        in2,
-        and: outputs.and,
-        or: outputs.or,
-        xor: outputs.xor,
-      }];
-      if (next.length > 200) next.shift();
+  const toggleGate = (index: number) => {
+    setGates(prev => {
+      const next = [...prev] as [boolean, boolean, boolean, boolean];
+      next[index] = !next[index];
       return next;
     });
-
-  }, [stepCounter, isPlaying, src1, src2, manualGateState, audioMonitorGate, isMuted]);
-
-  const toggleMute = () => {
-    const next = !isMuted;
-    setIsMuted(next);
-    soundEngine.setMuted(next);
   };
 
+  // Tabla completa de 16 estados posibles para 4 entradas binarias (2^4 = 16 combinaciones)
+  const ALL_COMBINATIONS = Array.from({ length: 16 }, (_, i) => {
+    const g1 = Boolean((i >> 3) & 1);
+    const g2 = Boolean((i >> 2) & 1);
+    const g3 = Boolean((i >> 1) & 1);
+    const g4 = Boolean(i & 1);
+    const orCombined = g1 || g2 || g3 || g4;
+    const andCombined = g1 && g2 && g3 && g4;
+    const xorSec1 = g1 !== g2;
+    const xorSec2 = g3 !== g4;
+    const activeCount = [g1, g2, g3, g4].filter(Boolean).length;
+    const isCurrent = g1 === gates[0] && g2 === gates[1] && g3 === gates[2] && g4 === gates[3];
+
+    return {
+      index: i,
+      g1, g2, g3, g4,
+      orCombined,
+      andCombined,
+      xorSec1,
+      xorSec2,
+      activeCount,
+      isCurrent
+    };
+  });
+
   return (
-    <div className="min-h-screen bg-[#0d0e12] text-neutral-100 flex flex-col font-sans">
-      {/* Top Navigation Bar */}
-      <header className="border-b border-neutral-800 bg-[#12141a]/90 backdrop-blur px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400">
-            <Zap className="w-5 h-5" />
+    <div className="min-h-screen bg-[#0d0e14] text-neutral-100 font-sans p-4 md:p-8">
+      {/* Header */}
+      <header className="max-w-7xl mx-auto mb-8 border-b border-neutral-800 pb-6 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              DOEPFER A-166 + A-185-2 + MULTIWAVE
+            </span>
+            <span className="text-xs text-neutral-500 font-mono">LABORATORIO DE TABLAS DE VERDAD</span>
           </div>
-          <div>
-            <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-              A-166 LAB <span className="text-xs font-mono font-normal px-2 py-0.5 bg-neutral-800 text-neutral-300 rounded border border-neutral-700">Eurorack Logic Simulator</span>
-            </h1>
-            <p className="text-xs text-neutral-400">
-              Aprende el módulo Doepfer A-166 Dual Logic con tablas de verdad, polirritmias y patch interactivo
-            </p>
-          </div>
+          <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white flex items-center gap-3">
+            Matriz de Verdad &amp; Acordes Microtonales
+          </h1>
+          <p className="text-sm text-neutral-400 max-w-3xl mt-1">
+            Simula en tiempo real qué ocurre con la afinación (A-185-2 Precision Adder) y la articulación del acorde (A-166 OR Gate) cuando combinas las 4 voces del µTune hacia la entrada Activate de tu Make Noise MultiWAVE.
+          </p>
         </div>
 
-        {/* Master Transport Controls */}
-        <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 px-4 py-2 rounded-xl">
-          <button
-            onClick={() => setIsPlaying(!isPlaying)}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md ${
-              isPlaying
-                ? 'bg-emerald-500 hover:bg-emerald-400 text-neutral-950 shadow-emerald-500/20'
-                : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200'
-            }`}
+        <div className="flex items-center gap-3">
+          <a
+            href="./multiwave-4voice-chord.html"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-xs font-mono text-neutral-300 transition"
           >
-            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            {isPlaying ? 'PAUSAR' : 'REPRODUCIR'}
-          </button>
-
-          <button
-            onClick={() => {
-              setStepCounter(0);
-              setHistory([]);
-            }}
-            className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition"
-            title="Reiniciar reloj"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
-
-          <div className="h-4 w-px bg-neutral-800 mx-1" />
-
-          {/* BPM Slider */}
-          <div className="flex items-center gap-2 text-xs font-mono">
-            <span className="text-neutral-400">BPM:</span>
-            <input
-              type="range"
-              min={40}
-              max={240}
-              value={bpm}
-              onChange={(e) => setBpm(Number(e.target.value))}
-              className="w-24 accent-amber-500 h-1 bg-neutral-800 rounded"
-            />
-            <span className="text-amber-400 font-bold w-7 text-right">{bpm}</span>
-          </div>
-
-          <div className="h-4 w-px bg-neutral-800 mx-1" />
-
-          {/* Mute Button */}
-          <button
-            onClick={toggleMute}
-            className={`p-1.5 rounded-lg border transition ${
-              isMuted
-                ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                : 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:text-white'
-            }`}
-            title={isMuted ? 'Desmutear audio' : 'Mutear audio'}
-          >
-            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-          </button>
+            <ExternalLink className="w-3.5 h-3.5" />
+            Ver Diagrama Archify
+          </a>
         </div>
       </header>
 
-      {/* Main Studio Area */}
-      <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-7xl mx-auto w-full">
-        {/* Left Column: Escenarios Guiados & Fuentes de Señal */}
-        <div className="lg:col-span-4 flex flex-col gap-5">
-          {/* Panel de Escenarios Educativos */}
-          <div className="bg-[#14161d] border border-neutral-800 rounded-xl p-4 shadow-lg">
-            <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-2 mb-3">
-              <BookOpen className="w-4 h-4 text-amber-400" />
-              Escenarios de Patch Guiados
-            </h2>
-            <div className="space-y-2">
-              {PRESET_SCENARIOS.map((scenario) => {
-                const isSelected = activeScenario.id === scenario.id;
+      {/* Main Grid */}
+      <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Panel Izquierdo: Control Interactivo de las 4 Voces del µTune */}
+        <div className="lg:col-span-5 flex flex-col gap-6">
+          <div className="bg-[#141620] border border-neutral-800 rounded-xl p-5 shadow-xl">
+            <div className="flex items-center justify-between mb-4 border-b border-neutral-800/80 pb-3">
+              <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                <Sliders className="w-4 h-4" />
+                1. Salidas de Voz del µTune (Gates)
+              </h2>
+              <span className="text-[10px] font-mono text-neutral-500">Haz clic para conmutar 0V / +5V</span>
+            </div>
+
+            <div className="space-y-3">
+              {VOICES_MICROTONAL.map((voice, idx) => {
+                const isActive = gates[idx];
                 return (
-                  <button
-                    key={scenario.id}
-                    onClick={() => handleSelectScenario(scenario)}
-                    className={`w-full text-left p-3 rounded-lg border transition-all text-xs ${
-                      isSelected
-                        ? 'bg-amber-500/10 border-amber-500/50 text-white shadow-sm'
-                        : 'bg-neutral-900/60 border-neutral-800/80 text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200'
+                  <div
+                    key={idx}
+                    onClick={() => toggleGate(idx)}
+                    className={`p-3.5 rounded-xl border cursor-pointer transition-all select-none flex items-center justify-between ${
+                      isActive
+                        ? 'bg-amber-500/10 border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.1)]'
+                        : 'bg-neutral-900/60 border-neutral-800/80 opacity-60 hover:opacity-90'
                     }`}
                   >
-                    <div className="font-bold text-sm text-neutral-200 mb-1">{scenario.name}</div>
-                    <div className="text-[11px] text-neutral-400 line-clamp-2">{scenario.description}</div>
-                  </button>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-mono font-bold text-xs ${
+                        isActive ? 'bg-amber-500 text-black shadow-md' : 'bg-neutral-800 text-neutral-400'
+                      }`}>
+                        G{idx + 1}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-neutral-200">{voice.name}</span>
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-neutral-800 text-amber-300">
+                            +{voice.cents} cents
+                          </span>
+                        </div>
+                        <div className="text-xs text-neutral-400">
+                          {voice.interval} <span className="text-neutral-500">({voice.ratio})</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-mono font-bold ${isActive ? 'text-emerald-400' : 'text-neutral-600'}`}>
+                        {isActive ? '+5V (HIGH)' : '0V (LOW)'}
+                      </span>
+                      {isActive ? (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                      ) : (
+                        <XCircle className="w-5 h-5 text-neutral-700" />
+                      )}
+                    </div>
+                  </div>
                 );
               })}
             </div>
 
-            {/* Explicación de teoría modular */}
-            <div className="mt-4 p-3 bg-neutral-900/90 border border-neutral-800 rounded-lg text-xs">
-              <span className="font-mono text-[10px] text-amber-400 font-bold uppercase block mb-1">
-                Lógica aplicada a este patch:
-              </span>
-              <p className="text-neutral-300 leading-relaxed">
-                {activeScenario.theory}
-              </p>
+            {/* Resumen del Estado Actual */}
+            <div className="mt-5 p-4 rounded-xl bg-neutral-950 border border-neutral-800/80 flex flex-col gap-2">
+              <div className="flex justify-between items-center text-xs font-mono">
+                <span className="text-neutral-400">Voces Activas en el Acorde:</span>
+                <span className="text-amber-400 font-bold">{activeVoicesCount} de 4</span>
+              </div>
+              <div className="flex justify-between items-center text-xs font-mono">
+                <span className="text-neutral-400">Suma de Voltaje (A-185-2 ➔ V/OCT):</span>
+                <span className="text-cyan-400 font-bold">+{summedPitchCV.toFixed(3)} V</span>
+              </div>
+              <div className="flex justify-between items-center text-xs font-mono pt-2 border-t border-neutral-900">
+                <span className="text-neutral-400">Salida Lógica Combinada (A-166 ➔ ACTIVATE):</span>
+                <span className={`font-bold px-2 py-0.5 rounded text-[11px] ${
+                  multiwaveActivate ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-red-950/40 text-red-400 border border-red-900/50'
+                }`}>
+                  {multiwaveActivate ? 'DISPARADO (+5V)' : 'SILENCIO (0V)'}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Configurador Rápido de Entradas (IN 1 e IN 2) */}
-          <div className="bg-[#14161d] border border-neutral-800 rounded-xl p-4 shadow-lg">
-            <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-2 mb-3">
-              <Sliders className="w-4 h-4 text-purple-400" />
-              Configurar Fuentes de Señal
-            </h2>
-
-            {/* Fuente IN 1 */}
-            <div className="mb-4 pb-3 border-b border-neutral-800">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-mono font-bold text-amber-400">IN 1 (Canal A)</span>
-                <span className="text-[10px] text-neutral-500 uppercase">{src1.type}</span>
+          {/* Comportamiento según el módulo físico */}
+          <div className="bg-[#141620] border border-neutral-800 rounded-xl p-5 shadow-xl">
+            <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2 mb-3">
+              <Activity className="w-4 h-4" />
+              2. Doepfer A-166 Dual Logic: Evaluación en Vivo
+            </h3>
+            
+            <div className="grid grid-cols-3 gap-2 text-center font-mono text-xs mb-4">
+              <div className={`p-2.5 rounded-lg border ${sec1_and ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 font-bold shadow' : 'bg-neutral-900 border-neutral-800 text-neutral-500'}`}>
+                <div className="text-[10px] text-neutral-400">G1 AND G2</div>
+                <div className="text-base font-black mt-0.5">{sec1_and ? '1' : '0'}</div>
+                <div className="text-[9px] text-neutral-500">Acento común</div>
               </div>
-              <div className="grid grid-cols-3 gap-1 mb-2">
-                <button
-                  onClick={() => setSrc1({ type: 'clock', clockDivision: 2 })}
-                  className={`py-1 px-2 rounded text-[10px] font-mono border ${
-                    src1.type === 'clock' && src1.clockDivision === 2 ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold' : 'bg-neutral-900 border-neutral-800 text-neutral-400'
-                  }`}
-                >
-                  Clock /2
-                </button>
-                <button
-                  onClick={() => setSrc1({ type: 'clock', clockDivision: 4 })}
-                  className={`py-1 px-2 rounded text-[10px] font-mono border ${
-                    src1.type === 'clock' && src1.clockDivision === 4 ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold' : 'bg-neutral-900 border-neutral-800 text-neutral-400'
-                  }`}
-                >
-                  Clock /4
-                </button>
-                <button
-                  onClick={() => setSrc1({ type: 'euclidean', euclideanHits: 3, euclideanSteps: 8 })}
-                  className={`py-1 px-2 rounded text-[10px] font-mono border ${
-                    src1.type === 'euclidean' ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold' : 'bg-neutral-900 border-neutral-800 text-neutral-400'
-                  }`}
-                >
-                  Euclid 3/8
-                </button>
+
+              <div className={`p-2.5 rounded-lg border ${sec1_or ? 'bg-orange-950/80 border-orange-500 text-orange-200 font-bold shadow' : 'bg-neutral-900 border-neutral-800 text-neutral-500'}`}>
+                <div className="text-[10px] text-neutral-400">G1 OR G2</div>
+                <div className="text-base font-black mt-0.5">{sec1_or ? '1' : '0'}</div>
+                <div className="text-[9px] text-neutral-500">Combiner Sec 1</div>
+              </div>
+
+              <div className={`p-2.5 rounded-lg border ${sec1_xor ? 'bg-pink-950/80 border-pink-500 text-pink-200 font-bold shadow' : 'bg-neutral-900 border-neutral-800 text-neutral-500'}`}>
+                <div className="text-[10px] text-neutral-400">G1 XOR G2</div>
+                <div className="text-base font-black mt-0.5">{sec1_xor ? '1' : '0'}</div>
+                <div className="text-[9px] text-neutral-500">Síncopa modal</div>
               </div>
             </div>
 
-            {/* Fuente IN 2 */}
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-mono font-bold text-purple-400">IN 2 (Canal B)</span>
-                <span className="text-[10px] text-neutral-500 uppercase">{src2.type}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1 mb-2">
-                <button
-                  onClick={() => setSrc2({ type: 'clock', clockDivision: 3 })}
-                  className={`py-1 px-2 rounded text-[10px] font-mono border ${
-                    src2.type === 'clock' && src2.clockDivision === 3 ? 'bg-purple-500/20 border-purple-500/50 text-purple-300 font-bold' : 'bg-neutral-900 border-neutral-800 text-neutral-400'
-                  }`}
-                >
-                  Clock /3
-                </button>
-                <button
-                  onClick={() => setSrc2({ type: 'euclidean', euclideanHits: 5, euclideanSteps: 12 })}
-                  className={`py-1 px-2 rounded text-[10px] font-mono border ${
-                    src2.type === 'euclidean' ? 'bg-purple-500/20 border-purple-500/50 text-purple-300 font-bold' : 'bg-neutral-900 border-neutral-800 text-neutral-400'
-                  }`}
-                >
-                  Euclid 5/12
-                </button>
-                <button
-                  onClick={() => setSrc2({ type: 'manual-gate' })}
-                  className={`py-1 px-2 rounded text-[10px] font-mono border ${
-                    src2.type === 'manual-gate' ? 'bg-purple-500/20 border-purple-500/50 text-purple-300 font-bold' : 'bg-neutral-900 border-neutral-800 text-neutral-400'
-                  }`}
-                >
-                  Manual Gate
-                </button>
-              </div>
+            <div className="p-3 bg-neutral-900/80 border border-neutral-800 rounded-lg text-xs text-neutral-300 leading-relaxed">
+              💡 <b>Conexión real hacia MultiWAVE:</b> Enlazar la salida <b>OR</b> de la Sección 1 con la entrada 1 de la Sección 2 en el A-166 crea una compuerta <b>OR cuádruple en cascada</b>. Cualquier actividad en las 4 voces del µTune dispara la entrada <code>Activate</code> sin poner en corto las salidas.
             </div>
           </div>
         </div>
 
-        {/* Center/Right Column: Módulo Físico Doepfer + Tabla de Verdad + Osciloscopio */}
-        <div className="lg:col-span-8 flex flex-col gap-5">
-          {/* Fila con Frontplate físico del módulo + Selector de Monitoreo de Audio */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-            {/* Frontal estilo Eurorack Doepfer */}
-            <div className="md:col-span-5 flex justify-center">
-              <ModuleFaceplate
-                inputs={currentInputs}
-                outputs={currentOutputs}
-                sectionNumber={1}
-                onManualGate={(active) => setManualGateState(active)}
-                isManualGateActive={manualGateState}
-              />
-            </div>
-
-            {/* Selector de Monitoreo Auditivo & Explicación de Salidas */}
-            <div className="md:col-span-7 flex flex-col gap-3">
-              <div className="bg-[#14161d] border border-neutral-800 rounded-xl p-4 shadow-lg">
-                <h3 className="text-xs font-mono font-bold uppercase text-neutral-400 mb-2 flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-emerald-400" />
-                  ¿Qué salida lógica quieres escuchar?
+        {/* Panel Derecho: Tabla de Verdad de 16 Estados (El mapa completo) */}
+        <div className="lg:col-span-7 flex flex-col gap-6">
+          <div className="bg-[#141620] border border-neutral-800 rounded-xl p-5 shadow-xl">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4 border-b border-neutral-800/80 pb-3">
+              <div>
+                <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                  <Layers className="w-4 h-4" />
+                  3. Tabla de Verdad Completa (16 Combinaciones Binarias 2⁴)
                 </h3>
-                <p className="text-[11px] text-neutral-400 mb-3">
-                  Selecciona qué puerta lógica enviar a los sintetizadores de batería (Kick en AND, Snare en OR, Hi-Hat en XOR).
+                <p className="text-[11px] text-neutral-400">
+                  La fila resaltada en dorado refleja tu selección interactiva en tiempo real.
                 </p>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {(['AND', 'OR', 'XOR'] as LogicGateType[]).map((gate) => (
-                    <button
-                      key={gate}
-                      onClick={() => setAudioMonitorGate(gate)}
-                      className={`py-2 px-3 rounded-lg border font-mono text-xs flex flex-col items-center gap-1 transition ${
-                        audioMonitorGate === gate
-                          ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-black shadow-[0_0_12px_rgba(16,185,129,0.2)]'
-                          : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'
-                      }`}
-                    >
-                      <span className="font-bold">{gate}</span>
-                      <span className="text-[9px] text-neutral-500">
-                        {gate === 'AND' ? '🥁 Kick' : gate === 'OR' ? '🥁 Rim/Snare' : '🥁 Hi-Hat'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <button
-                    onClick={() => setAudioMonitorGate('INPUTS')}
-                    className={`py-1.5 px-2 rounded border text-xs font-mono ${
-                      audioMonitorGate === 'INPUTS' ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 font-bold' : 'bg-neutral-900 border-neutral-800 text-neutral-400'
-                    }`}
-                  >
-                    🔊 Monitorear Entradas (IN1 &amp; IN2)
-                  </button>
-                  <button
-                    onClick={() => setAudioMonitorGate('ALL')}
-                    className={`py-1.5 px-2 rounded border text-xs font-mono ${
-                      audioMonitorGate === 'ALL' ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold' : 'bg-neutral-900 border-neutral-800 text-neutral-400'
-                    }`}
-                  >
-                    🎶 Poly-Beat (Todas a la vez)
-                  </button>
-                </div>
               </div>
 
-              {/* Tabla de Verdad Dinámica */}
-              <TruthTable
-                in1={currentInputs.in1}
-                in2={currentInputs.in2}
-                outputs={currentOutputs}
-                highlightGate={activeScenario.highlightGate}
-              />
+              <span className="text-[10px] font-mono px-2 py-1 rounded bg-neutral-900 border border-neutral-700 text-neutral-300">
+                Fila actual: <b className="text-amber-400">{gates.map(g => g ? '1' : '0').join('')}</b>
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-center font-mono text-xs border-collapse">
+                <thead>
+                  <tr className="bg-neutral-900/90 text-neutral-400 border-b border-neutral-700 text-[11px]">
+                    <th className="py-2.5 px-2 text-neutral-500">#</th>
+                    <th className="py-2.5 px-2 text-amber-300 font-bold border-l border-neutral-800">G1 (Tónica)</th>
+                    <th className="py-2.5 px-2 text-amber-300 font-bold">G2 (3ª N)</th>
+                    <th className="py-2.5 px-2 text-amber-300 font-bold">G3 (5ª J)</th>
+                    <th className="py-2.5 px-2 text-amber-300 font-bold border-r border-neutral-700">G4 (7ª S)</th>
+                    <th className="py-2.5 px-2 bg-emerald-950/40 text-emerald-300 font-bold">OR (Activate)</th>
+                    <th className="py-2.5 px-2 text-cyan-300">AND (G1&amp;G2)</th>
+                    <th className="py-2.5 px-2 text-pink-300">XOR (G1^G2)</th>
+                    <th className="py-2.5 px-2 text-neutral-400">Voces</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ALL_COMBINATIONS.map((row) => (
+                    <tr
+                      key={row.index}
+                      onClick={() => setGates([row.g1, row.g2, row.g3, row.g4])}
+                      className={`cursor-pointer transition-all border-b border-neutral-800/40 ${
+                        row.isCurrent
+                          ? 'bg-amber-500/20 text-white font-bold border-l-4 border-l-amber-400 ring-1 ring-amber-500/40'
+                          : 'hover:bg-neutral-800/40 text-neutral-400'
+                      }`}
+                    >
+                      <td className="py-1.5 px-2 text-[10px] text-neutral-600">{row.index}</td>
+                      <td className={`py-1.5 px-2 border-l border-neutral-800 ${row.g1 ? 'text-amber-400 font-bold' : 'text-neutral-600'}`}>
+                        {row.g1 ? '1' : '0'}
+                      </td>
+                      <td className={`py-1.5 px-2 ${row.g2 ? 'text-amber-400 font-bold' : 'text-neutral-600'}`}>
+                        {row.g2 ? '1' : '0'}
+                      </td>
+                      <td className={`py-1.5 px-2 ${row.g3 ? 'text-amber-400 font-bold' : 'text-neutral-600'}`}>
+                        {row.g3 ? '1' : '0'}
+                      </td>
+                      <td className={`py-1.5 px-2 border-r border-neutral-700 ${row.g4 ? 'text-amber-400 font-bold' : 'text-neutral-600'}`}>
+                        {row.g4 ? '1' : '0'}
+                      </td>
+
+                      {/* MultiWAVE Activate Output (OR Combiner) */}
+                      <td className={`py-1.5 px-2 ${
+                        row.orCombined ? 'text-emerald-400 font-bold bg-emerald-950/20' : 'text-red-400/80 bg-red-950/20'
+                      }`}>
+                        {row.orCombined ? 'ON (+5V)' : 'OFF (0V)'}
+                      </td>
+
+                      {/* AND Sec 1 */}
+                      <td className={`py-1.5 px-2 ${row.g1 && row.g2 ? 'text-cyan-400 font-bold' : 'text-neutral-600'}`}>
+                        {row.g1 && row.g2 ? '1' : '0'}
+                      </td>
+
+                      {/* XOR Sec 1 */}
+                      <td className={`py-1.5 px-2 ${row.xorSec1 ? 'text-pink-400 font-bold' : 'text-neutral-600'}`}>
+                        {row.xorSec1 ? '1' : '0'}
+                      </td>
+
+                      {/* Cantidad de notas activas */}
+                      <td className="py-1.5 px-2 text-[11px] text-neutral-400">
+                        {row.activeCount} {row.activeCount === 1 ? 'nota' : 'notas'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-neutral-800 flex flex-wrap justify-between items-center gap-2 text-xs text-neutral-400">
+              <span>💡 Haz clic en cualquier fila de la tabla para cargar esa combinación instantáneamente.</span>
+              <span className="font-mono text-[11px] text-neutral-500">1 = +5V (Gate Alto) | 0 = 0V (Gate Bajo)</span>
             </div>
           </div>
-
-          {/* Osciloscopio / Visualizador de Gates */}
-          <OscilloscopeView history={history} currentStepIndex={stepCounter} />
         </div>
       </main>
     </div>
   );
 }
+
 export default App;
