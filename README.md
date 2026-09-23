@@ -1,30 +1,53 @@
-# A-166 Lab 🎛️⚡
+# A-166 Lab
 
-Diagramas arquitectónicos interactivos y modelado de flujo de señal para el **Doepfer A-166 Dual Logic Module** aplicado a **acordes, microtonalidad y modulación en Eurorack**.
-
----
-
-## 🚀 ¿Qué contiene este repositorio?
-
-Este laboratorio utiliza [Archify](https://github.com/tt-a1i/archify) para renderizar diagramas arquitectónicos interactivos e independientes en formato HTML que muestran con precisión quirúrgica el flujo de señales modulares:
-
-### 1. Make Noise MultiWAVE: Acorde de 4 Voces (`multiwave-4voice-chord.html`)
-Muestra la técnica de **Modulation Dissemination** para generar un acorde microtonal de cuatro voces a partir de un **Tubbutec µTune**:
-- **Control de Tono (Pitch CV)**: Las 4 salidas CV del µTune se suman mediante un **Doepfer A-185-2 Precision Adder** (ultra-alta precisión de 0.1% de tolerancia) y se inyectan en la entrada `V/OCT` del MultiWAVE sin perder la afinación en cents.
-- **Control de Articulación (Gate)**: Los 4 Gates del µTune se combinan con la compuerta **`OR (≥1)`** del **Doepfer A-166 Dual Logic**, evitando cortocircuitos y disparando la entrada `Activate` del MultiWAVE cuando cualquiera de las voces está activa.
-
-### 2. Polyphonic Microtonal Voicing (`a166-microtonal-chords.html`)
-Explora cómo las compuertas lógicas (`AND`, `OR`, `XOR`) actúan como un director armónico abriendo y cerrando dinámicamente las voces de un acorde a través de un **Doepfer A-141-4 Quad Poly VCADSR** para evitar densidades sonoras estáticas y crear voicings evolutivos.
+Simulador interactivo de matrices de verdad, diagramas arquitectonicos y modelado de senal para el Doepfer A-166 Dual Logic Module aplicado a acordes, microtonalidad y modulacion en Eurorack.
 
 ---
 
-## 🖥️ Cómo visualizar los diagramas
+## Contenido del Repositorio
 
-Al ser archivos HTML completamente autocontenidos (con SVG vectorial interactivo, soporte para Dark/Light mode y seguimiento de dependencias):
+### 1. Aplicacion Web Interactiva: Matriz de Verdad de 16 Estados (`src/App.tsx`)
+Una interfaz web interactiva que simula en tiempo real que ocurre cuando combinas las 4 voces del Tubbutec uTune a traves del Doepfer A-166 y el Doepfer A-185-2 Precision Adder hacia la entrada Activate y V/OCT del Make Noise MultiWAVE:
+- Tabla de verdad completa de 16 estados (2^4): Visualiza todas las combinaciones posibles de puertas (0000 a 1111) con resaltado en vivo.
+- Calculo de articulacion por compuerta OR (>=1): Determina cuando el MultiWAVE dispara (ON +5V) o guarda silencio (OFF 0V).
+- Suma de voltaje de tono (1V/Oct): Muestra en voltios la suma analogica precisa que va al jack V/OCT.
+- Deteccion de acentos y sincopas: Muestra salidas simultaneas AND y XOR para modular acordes microtonales.
+- Interactividad bidireccional: Conmuta las voces manualmente o haz clic en cualquier fila de la tabla para cargar ese estado instantaneamente.
 
-1. Clona este repositorio o descarga los archivos.
-2. Abre en tu navegador cualquiera de los dos archivos:
+### 2. Diagramas Arquitectonicos Interactivos (Archify)
+Archivos HTML completamente autocontenidos (sin dependencias externas, con SVG vectorial interactivo, soporte para Dark/Light mode y trazado de rutas):
+- `multiwave-4voice-chord.html`: Diagrama de la arquitectura de Modulation Dissemination para el Make Noise MultiWAVE con el A-185-2 y A-166.
+- `a166-microtonal-chords.html`: Diagrama del ruteo polifonico tradicional con el Doepfer A-141-4 Quad VCADSR y banco de osciladores.
+
+---
+
+## Como ejecutar la aplicacion web interactiva en Localhost
+
+Para levantar la aplicacion interactiva de tablas de verdad en tu maquina local:
+
+```bash
+# 1. En Windows CMD, cambia a la unidad D:
+d:
+
+# 2. Entra en la carpeta del proyecto
+cd \DocumentosDiscoD\a-166-lab
+
+# 3. Instala dependencias (solo la primera vez)
+npm install
+
+# 4. Inicia el servidor de desarrollo
+npm run dev
+```
+
+Abre tu navegador en la URL que indique la terminal (por defecto: `http://localhost:5173`).
+
+---
+
+## Como visualizar los diagramas estaticos de Archify
+
+Si solo quieres consultar los diagramas interactivos de flujo de senal:
+1. Abre directamente en tu navegador cualquiera de los dos archivos:
    - `multiwave-4voice-chord.html`
    - `a166-microtonal-chords.html`
 
-No necesitas instalar servidores ni dependencias para ver los flujos.
+No requieren dependencias, conexion a internet ni servidor web activo.

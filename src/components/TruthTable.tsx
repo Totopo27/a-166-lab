@@ -91,7 +91,7 @@ export const TruthTable: React.FC<Props> = ({ in1, in2, outputs, highlightGate }
 
       <div className="mt-3 pt-2 border-t border-neutral-800 flex justify-between items-center text-[11px] text-neutral-400">
         <p>
-          💡 <b>1 = +5V (Gate Alto)</b> | <b>0 = 0V (Gate Bajo/GND)</b>
+          <span>1 = +5V (Gate Alto)</span> | <span>0 = 0V (Gate Bajo/GND)</span>
         </p>
         <div className="flex gap-2 items-center">
           <span>Salidas activas ahora:</span>

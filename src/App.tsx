@@ -234,7 +234,7 @@ export function App() {
             </div>
 
             <div className="p-3 bg-neutral-900/80 border border-neutral-800 rounded-lg text-xs text-neutral-300 leading-relaxed">
-              💡 <b>Conexión real hacia MultiWAVE:</b> Enlazar la salida <b>OR</b> de la Sección 1 con la entrada 1 de la Sección 2 en el A-166 crea una compuerta <b>OR cuádruple en cascada</b>. Cualquier actividad en las 4 voces del µTune dispara la entrada <code>Activate</code> sin poner en corto las salidas.
+              <b>Conexion hacia MultiWAVE:</b> Enlazar la salida <b>OR</b> de la Seccion 1 con la entrada 1 de la Seccion 2 en el A-166 crea una compuerta <b>OR cuadruple en cascada</b>. Cualquier actividad en las 4 voces del uTune dispara la entrada <code>Activate</code> sin poner en corto las salidas.
             </div>
           </div>
         </div>
@@ -326,7 +326,7 @@ export function App() {
             </div>
 
             <div className="mt-4 pt-3 border-t border-neutral-800 flex flex-wrap justify-between items-center gap-2 text-xs text-neutral-400">
-              <span>💡 Haz clic en cualquier fila de la tabla para cargar esa combinación instantáneamente.</span>
+              <span>Haz clic en cualquier fila de la tabla para cargar esa combinacion instantaneamente.</span>
               <span className="font-mono text-[11px] text-neutral-500">1 = +5V (Gate Alto) | 0 = 0V (Gate Bajo)</span>
             </div>
           </div>
